@@ -21,8 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.data.Categoria
-import com.example.myapplication.data.Producto
+import com.example.myapplication.data.categoria.Categoria
+import com.example.myapplication.data.producto.Producto
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

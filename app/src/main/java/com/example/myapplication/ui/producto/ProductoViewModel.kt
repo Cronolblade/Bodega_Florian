@@ -3,9 +3,10 @@ package com.example.myapplication.ui.producto
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.Categoria
-import com.example.myapplication.data.Producto
-import com.example.myapplication.data.ProductoRepository
+import com.example.myapplication.data.categoria.Categoria
+import com.example.myapplication.data.producto.Producto
+import com.example.myapplication.data.producto.ProductoRepository
+import com.example.myapplication.data.categoria.CategoriaRepository
 import com.example.myapplication.util.normalizeForComparison
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -21,6 +22,7 @@ data class ProductListUiState(
 // Estado para el formulario de producto
 data class ProductFormState(
     val nombre: String = "",
+    val categoria: String = "",
     val precioCompra: String = "",
     val precioVenta: String = "",
     val stock: String = "",
@@ -29,18 +31,19 @@ data class ProductFormState(
     val codigoBarras: String = ""
 )
 
-// --- INICIO DE CAMBIOS EN AddProductUiState ---
+// El UiState del formulario ahora es mucho más simple.
 data class AddProductUiState(
-    val selectedCategoryName: String = "",
-    val categoryQuery: String = "",
     val showAddCategoryDialog: Boolean = false,
-    val isCategoryMenuVisible: Boolean = false, // Única fuente de verdad para la visibilidad del menú
     val userMessage: String? = null,
-    val formState: ProductFormState = ProductFormState()
+    val formState: ProductFormState = ProductFormState(),
+    val showCategorySearchDialog: Boolean = false,
+    val categorySearchQuery: String = ""
 )
-// --- FIN DE CAMBIOS EN AddProductUiState ---
 
-class ProductoViewModel(private val repository: ProductoRepository) : ViewModel() {
+class ProductoViewModel(
+    private val productoRepository: ProductoRepository,
+    private val categoriaRepository: CategoriaRepository
+) : ViewModel() {
 
     private val _listUiState = MutableStateFlow(ProductListUiState())
     val listUiState: StateFlow<ProductListUiState> = _listUiState.asStateFlow()
@@ -48,7 +51,7 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
     private val _addProductUiState = MutableStateFlow(AddProductUiState())
     val addProductUiState: StateFlow<AddProductUiState> = _addProductUiState.asStateFlow()
 
-    val categories: StateFlow<List<Categoria>> = repository.todasLasCategorias
+    val categories: StateFlow<List<Categoria>> = categoriaRepository.todasLasCategorias
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000L),
@@ -57,7 +60,7 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
 
     val filteredProductList: StateFlow<List<Producto>> =
         combine(
-            repository.todosLosProductos,
+            productoRepository.todosLosProductos,
             _listUiState.map { it.nameSearchText }.distinctUntilChanged(),
             _listUiState.map { it.categorySearchText }.distinctUntilChanged()
         ) { productList, nameSearch, categorySearch ->
@@ -76,13 +79,12 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
 
     fun loadProductIntoForm(productId: Int) {
         viewModelScope.launch {
-            repository.obtenerPorId(productId).firstOrNull()?.let { product ->
+            productoRepository.obtenerPorId(productId).firstOrNull()?.let { product ->
                 _addProductUiState.update {
                     it.copy(
-                        selectedCategoryName = product.categoria,
-                        categoryQuery = product.categoria,
                         formState = ProductFormState(
                             nombre = product.nombre,
+                            categoria = product.categoria,
                             precioCompra = product.precioCompra.toString(),
                             precioVenta = product.precioVenta.toString(),
                             stock = product.stock.toString(),
@@ -97,52 +99,30 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
     }
 
     fun resetForm() {
-        _addProductUiState.update {
-            it.copy(
-                formState = ProductFormState(),
-                selectedCategoryName = "",
-                categoryQuery = "",
-                showAddCategoryDialog = false,
-                isCategoryMenuVisible = false
-            )
-        }
+        _addProductUiState.value = AddProductUiState()
     }
 
-    // --- INICIO DE LA LÓGICA CORREGIDA ---
-    fun onCategoryQueryChanged(query: String) {
-        _addProductUiState.update { currentState ->
-            val isDeleting = query.length < currentState.categoryQuery.length
-            currentState.copy(
-                categoryQuery = query,
-                selectedCategoryName = "", // Anulamos la selección al editar
-                isCategoryMenuVisible = !isDeleting // Ocultamos el menú solo si se está borrando
-            )
-        }
+    fun openCategorySearchDialog() {
+        _addProductUiState.update { it.copy(showCategorySearchDialog = true, categorySearchQuery = "") }
+    }
+
+    fun closeCategorySearchDialog() {
+        _addProductUiState.update { it.copy(showCategorySearchDialog = false) }
+    }
+
+    fun onCategorySearchQueryChange(query: String) {
+        _addProductUiState.update { it.copy(categorySearchQuery = query) }
     }
 
     fun onCategorySelected(name: String) {
-        _addProductUiState.update {
-            it.copy(
-                selectedCategoryName = name,
-                categoryQuery = name,
-                isCategoryMenuVisible = false // Cerramos el menú al seleccionar
-            )
-        }
+        val currentFormState = _addProductUiState.value.formState
+        onFormChange(currentFormState.copy(categoria = name))
+        closeCategorySearchDialog()
     }
 
     fun requestAddNewCategory() {
-        _addProductUiState.update {
-            it.copy(
-                showAddCategoryDialog = true,
-                isCategoryMenuVisible = false // Cerramos el menú para mostrar el diálogo
-            )
-        }
+        _addProductUiState.update { it.copy(showAddCategoryDialog = true) }
     }
-
-    fun dismissCategoryMenu() {
-        _addProductUiState.update { it.copy(isCategoryMenuVisible = false) }
-    }
-    // --- FIN DE LA LÓGICA CORREGIDA ---
 
     fun onDialogDismiss() {
         _addProductUiState.update { it.copy(showAddCategoryDialog = false) }
@@ -158,7 +138,7 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
                     _addProductUiState.update { it.copy(userMessage = "La categoría '$name' ya existe.") }
                 } else {
                     val categoria = Categoria(nombre = name)
-                    repository.insertarCategoria(categoria)
+                    categoriaRepository.insertarCategoria(categoria)
                     onCategorySelected(name)
                     _addProductUiState.update { it.copy(userMessage = "Categoría '$name' añadida.") }
                 }
@@ -171,44 +151,48 @@ class ProductoViewModel(private val repository: ProductoRepository) : ViewModel(
         _addProductUiState.update { it.copy(formState = newFormState) }
     }
 
-    suspend fun checkBarcodeExists(barcode: String): Boolean = repository.findByBarcode(barcode) != null
+    suspend fun checkBarcodeExists(barcode: String): Boolean = productoRepository.findByBarcode(barcode) != null
     fun onNameSearchTextChanged(text: String) { _listUiState.update { it.copy(nameSearchText = text) } }
     fun onCategorySearchTextChanged(text: String) { _listUiState.update { it.copy(categorySearchText = text) } }
     fun onProductDeleteRequest(producto: Producto) { _listUiState.update { it.copy(productToDelete = producto) } }
-    fun onProductDeleteConfirm() { _listUiState.value.productToDelete?.let { viewModelScope.launch { repository.eliminar(it); onProductDeleteCancel() } } }
+    fun onProductDeleteConfirm() { _listUiState.value.productToDelete?.let { viewModelScope.launch { productoRepository.eliminar(it); onProductDeleteCancel() } } }
     fun onProductDeleteCancel() { _listUiState.update { it.copy(productToDelete = null) } }
-    fun getProductById(id: Int): Flow<Producto?> = repository.obtenerPorId(id)
+    fun getProductById(id: Int): Flow<Producto?> = productoRepository.obtenerPorId(id)
     fun onUserMessageShown() { _addProductUiState.update { it.copy(userMessage = null) } }
-    fun insertarProducto(producto: Producto) { viewModelScope.launch { repository.insertar(producto) } }
-    fun actualizarProducto(producto: Producto) { viewModelScope.launch { repository.actualizar(producto) } }
+    fun insertarProducto(producto: Producto) { viewModelScope.launch { productoRepository.insertar(producto) } }
+    fun actualizarProducto(producto: Producto) { viewModelScope.launch { productoRepository.actualizar(producto) } }
+    fun eliminarProducto(producto: Producto) { viewModelScope.launch { productoRepository.eliminar(producto) } }
     fun insertarCategoria(categoryName: String) {
         viewModelScope.launch {
             if (categoryName.isNotBlank()) {
                 val categoria = Categoria(nombre = categoryName)
-                repository.insertarCategoria(categoria)
+                categoriaRepository.insertarCategoria(categoria)
                 _addProductUiState.update { it.copy(userMessage = "Categoría '$categoryName' añadida.") }
             }
         }
     }
     fun actualizarCategoria(categoria: Categoria) {
         viewModelScope.launch {
-            repository.actualizarCategoria(categoria)
+            categoriaRepository.actualizarCategoria(categoria)
             _addProductUiState.update { it.copy(userMessage = "Categoría actualizada.") }
         }
     }
     fun eliminarCategoria(categoria: Categoria) {
         viewModelScope.launch {
-            repository.eliminarCategoria(categoria)
+            categoriaRepository.eliminarCategoria(categoria)
             _addProductUiState.update { it.copy(userMessage = "Categoría eliminada.") }
         }
     }
 }
 
-class ProductoViewModelFactory(private val repository: ProductoRepository) : ViewModelProvider.Factory {
+class ProductoViewModelFactory(
+    private val productoRepository: ProductoRepository,
+    private val categoriaRepository: CategoriaRepository
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ProductoViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return ProductoViewModel(repository) as T
+            return ProductoViewModel(productoRepository, categoriaRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

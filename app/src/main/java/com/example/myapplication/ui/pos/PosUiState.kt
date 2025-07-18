@@ -1,7 +1,7 @@
 package com.example.myapplication.ui.pos
 
-import com.example.myapplication.data.Categoria
-import com.example.myapplication.data.Producto
+import com.example.myapplication.data.categoria.Categoria
+import com.example.myapplication.data.producto.Producto
 
 // Clase para representar un item en el carrito de compras
 data class CartItem(

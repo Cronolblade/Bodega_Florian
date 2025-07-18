@@ -5,15 +5,20 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.Categoria
-import com.example.myapplication.data.Producto
-import com.example.myapplication.data.ProductoRepository
-import com.example.myapplication.data.Venta
-import com.example.myapplication.data.VentaDetalle
+import com.example.myapplication.data.producto.Producto
+import com.example.myapplication.data.producto.ProductoRepository
+import com.example.myapplication.data.venta.VentaRepository
+import com.example.myapplication.data.categoria.CategoriaRepository
+import com.example.myapplication.data.venta.Venta
+import com.example.myapplication.data.venta.VentaDetalle
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class PosViewModel(private val repository: ProductoRepository) : ViewModel() {
+class PosViewModel(
+    private val productoRepository: ProductoRepository,
+    private val categoriaRepository: CategoriaRepository,
+    private val ventaRepository: VentaRepository
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PosUiState())
     val uiState: StateFlow<PosUiState> = _uiState.asStateFlow()
@@ -21,8 +26,8 @@ class PosViewModel(private val repository: ProductoRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             combine(
-                repository.todosLosProductos,
-                repository.todasLasCategorias,
+                productoRepository.todosLosProductos,
+                categoriaRepository.todasLasCategorias, // Cambia si las categorías vienen de otro repo
                 _uiState.map { it.textoBusqueda }.distinctUntilChanged(),
                 _uiState.map { it.categoriaFiltro }.distinctUntilChanged()
             ) { productos, categorias, busqueda, filtroCategoria ->
@@ -43,7 +48,7 @@ class PosViewModel(private val repository: ProductoRepository) : ViewModel() {
 
     fun addProductToCartByBarcode(barcode: String, context: Context) {
         viewModelScope.launch {
-            val producto = repository.findByBarcode(barcode)
+            val producto = productoRepository.findByBarcode(barcode)
             if (producto != null) {
                 addToCart(producto)
                 Toast.makeText(context, "'${producto.nombre}' añadido al carrito.", Toast.LENGTH_SHORT).show()
@@ -137,17 +142,16 @@ class PosViewModel(private val repository: ProductoRepository) : ViewModel() {
                     fecha = System.currentTimeMillis(),
                     total = estadoActual.totalVenta
                 )
-                // Ahora, al crear los detalles, también pasamos el precio de compra.
                 val detalles = estadoActual.carrito.map { cartItem ->
                     VentaDetalle(
                         idVenta = 0,
                         idProducto = cartItem.producto.id,
                         cantidad = cartItem.cantidad,
                         precioVentaUnitario = cartItem.producto.precioVenta,
-                        precioCompraUnitario = cartItem.producto.precioCompra // <-- CAMBIO CLAVE
+                        precioCompraUnitario = cartItem.producto.precioCompra
                     )
                 }
-                repository.realizarVenta(venta, detalles)
+                ventaRepository.realizarVenta(venta, detalles)
                 clearCart()
                 onVentaExitosa()
             }
@@ -157,11 +161,15 @@ class PosViewModel(private val repository: ProductoRepository) : ViewModel() {
 }
 
 // El Factory no necesita cambios
-class PosViewModelFactory(private val repository: ProductoRepository) : ViewModelProvider.Factory {
+class PosViewModelFactory(
+    private val productoRepository: ProductoRepository,
+    private val categoriaRepository: CategoriaRepository,
+    private val ventaRepository: VentaRepository
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PosViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return PosViewModel(repository) as T
+            return PosViewModel(productoRepository, categoriaRepository, ventaRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

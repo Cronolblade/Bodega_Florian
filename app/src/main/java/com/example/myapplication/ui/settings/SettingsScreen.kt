@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.data.Theme
+import com.example.myapplication.data.settings.Theme
 import com.example.myapplication.util.BackupManager
 
 @OptIn(ExperimentalMaterial3Api::class)

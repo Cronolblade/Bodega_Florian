@@ -4,9 +4,9 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.BodegaDatabase
-import com.example.myapplication.data.SettingsManager
-import com.example.myapplication.data.Theme
+import com.example.myapplication.data.database.BodegaDatabase
+import com.example.myapplication.data.settings.SettingsManager
+import com.example.myapplication.data.settings.Theme
 import com.example.myapplication.util.BackupManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

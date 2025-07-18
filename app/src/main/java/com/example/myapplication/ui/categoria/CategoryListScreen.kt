@@ -15,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.data.Categoria
+import com.example.myapplication.data.categoria.Categoria
 import com.example.myapplication.ui.producto.ProductoViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)

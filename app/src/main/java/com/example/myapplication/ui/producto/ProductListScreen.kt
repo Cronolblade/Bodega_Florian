@@ -24,7 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.myapplication.data.Producto
+import com.example.myapplication.data.producto.Producto
 import com.example.myapplication.util.toFriendlyDateString // <-- NUEVO IMPORT
 import kotlinx.coroutines.launch
 
@@ -32,7 +32,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProductListScreen(
     viewModel: ProductoViewModel,
-    drawerState: DrawerState,
     onAddProductClick: () -> Unit,
     onProductClick: (Int) -> Unit
 ) {
@@ -59,11 +58,7 @@ fun ProductListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Inventario") },
-                navigationIcon = {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Abrir Menú")
-                    }
-                },
+                navigationIcon = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.primary,

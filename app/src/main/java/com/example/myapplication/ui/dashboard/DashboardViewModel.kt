@@ -3,10 +3,11 @@ package com.example.myapplication.ui.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.GananciaPorDia
-import com.example.myapplication.data.Producto
-import com.example.myapplication.data.ProductoRepository
-import com.example.myapplication.data.VentasPorDia
+import com.example.myapplication.data.producto.Producto
+import com.example.myapplication.data.producto.ProductoRepository
+import com.example.myapplication.data.reportes.GananciaPorDia
+import com.example.myapplication.data.reportes.VentasPorDia
+import com.example.myapplication.data.reportes.ReporteRepository
 import com.patrykandpatrick.vico.core.entry.ChartEntryModelProducer
 import com.patrykandpatrick.vico.core.entry.entryOf
 import kotlinx.coroutines.flow.*
@@ -23,7 +24,10 @@ data class DashboardUiState(
     val diasVencimiento: Int = 30
 )
 
-class DashboardViewModel(repository: ProductoRepository) : ViewModel() {
+class DashboardViewModel(
+    private val productoRepository: ProductoRepository,
+    private val reporteRepository: ReporteRepository
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -36,10 +40,10 @@ class DashboardViewModel(repository: ProductoRepository) : ViewModel() {
         // --- USAMOS UN ÚNICO COMBINE PARA EVITAR RACE CONDITIONS ---
         viewModelScope.launch {
             combine(
-                repository.ventasTotalesPorDia,
-                repository.gananciasTotalesPorDia,
-                repository.obtenerProductosConStockBajo(_uiState.value.umbralStockBajo),
-                repository.obtenerProductosProximosAVencer(_uiState.value.diasVencimiento)
+                reporteRepository.ventasTotalesPorDia,
+                reporteRepository.gananciasTotalesPorDia,
+                productoRepository.obtenerProductosConStockBajo(_uiState.value.umbralStockBajo),
+                productoRepository.obtenerProductosProximosAVencer(_uiState.value.diasVencimiento)
             ) { ventas, ganancias, stockBajo, porVencer ->
 
                 // 1. Actualizamos los modelos de los gráficos (efecto secundario)
@@ -50,26 +54,28 @@ class DashboardViewModel(repository: ProductoRepository) : ViewModel() {
                 gananciasModelProducer.setEntries(gananciasEntries)
 
                 // 2. Creamos y emitimos el nuevo estado de la UI con los datos crudos
-                DashboardUiState(
+                _uiState.update {
+                    it.copy(
                     ventasDiarias = ventas,
                     gananciasDiarias = ganancias,
                     gananciaTotal = ganancias.sumOf { ganancia -> ganancia.totalGanancia.toDouble() }.toFloat(),
                     productosStockBajo = stockBajo,
                     productosProximosAVencer = porVencer
                 )
-            }.collect { newState ->
-                // Asignamos el nuevo estado completo a nuestro StateFlow
-                _uiState.value = newState
             }
+            }.collect()
         }
     }
 }
 
-class DashboardViewModelFactory(private val repository: ProductoRepository) : ViewModelProvider.Factory {
+class DashboardViewModelFactory(
+    private val productoRepository: ProductoRepository,
+    private val reporteRepository: ReporteRepository
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DashboardViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return DashboardViewModel(repository) as T
+            return DashboardViewModel(productoRepository, reporteRepository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

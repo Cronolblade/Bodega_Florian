@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,9 +28,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.saveable.rememberSaveable
 import coil.compose.AsyncImage
-import com.example.myapplication.data.Producto
+import com.example.myapplication.data.categoria.Categoria
+import com.example.myapplication.data.producto.Producto
 import com.example.myapplication.ui.scanner.ScannerViewModel
 import com.example.myapplication.util.normalizeForComparison
 import com.example.myapplication.util.showDatePicker
@@ -55,12 +61,18 @@ fun AddEditProductScreen(
 
     if (uiState.showAddCategoryDialog) {
         NewCategoryDialog(
-            onConfirm = { newName ->
-                productoViewModel.confirmAddNewCategory(newName)
-            },
-            onDismiss = {
-                productoViewModel.onDialogDismiss()
-            }
+            onConfirm = { newName -> productoViewModel.confirmAddNewCategory(newName) },
+            onDismiss = { productoViewModel.onDialogDismiss() }
+        )
+    }
+
+    if (uiState.showCategorySearchDialog) {
+        CategorySearchDialog(
+            allCategories = categories,
+            query = uiState.categorySearchQuery,
+            onQueryChange = { productoViewModel.onCategorySearchQueryChange(it) },
+            onCategorySelected = { productoViewModel.onCategorySelected(it.nombre) },
+            onDismiss = { productoViewModel.closeCategorySearchDialog() }
         )
     }
 
@@ -71,30 +83,37 @@ fun AddEditProductScreen(
         }
     }
 
-    LaunchedEffect(key1 = productId) {
-        if (isEditing) {
-            productoViewModel.loadProductIntoForm(productId)
-        } else {
-            productoViewModel.resetForm()
+    val isFormInitialized = rememberSaveable(productId) { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!isFormInitialized.value) {
+            if (isEditing) {
+                productoViewModel.loadProductIntoForm(productId)
+            } else {
+                productoViewModel.resetForm()
+            }
+            isFormInitialized.value = true
         }
     }
 
     val scannedBarcode by scannerViewModel.scannedBarcode.collectAsState()
-    LaunchedEffect(key1 = scannedBarcode) {
+    LaunchedEffect(scannedBarcode) {
         scannedBarcode?.let { barcode ->
             scope.launch {
                 val exists = productoViewModel.checkBarcodeExists(barcode)
                 if (exists) {
                     Toast.makeText(context, "Este código de barras ya está asignado.", Toast.LENGTH_LONG).show()
                 } else {
-                    productoViewModel.onFormChange(formState.copy(codigoBarras = barcode))
+                    productoViewModel.onFormChange(
+                        productoViewModel.addProductUiState.value.formState.copy(codigoBarras = barcode)
+                    )
                     Toast.makeText(context, "Código de barras añadido.", Toast.LENGTH_SHORT).show()
                 }
                 scannerViewModel.resetBarcode()
             }
         }
     }
-
+    
     DisposableEffect(Unit) {
         onDispose {
             scannerViewModel.resetBarcode()
@@ -132,148 +151,106 @@ fun AddEditProductScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // --- INICIO DEL BLOQUE DE CÓDIGO CORREGIDO ---
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ){
-                var expanded by remember { mutableStateOf(false) }
-
-                // --- INICIO DEL CAMBIO ---
-                val filteredCategories = if (uiState.categoryQuery.isEmpty()) {
-                    categories
-                } else {
-                    categories.filter {
-                        it.nombre.normalizeForComparison().startsWith(uiState.categoryQuery.normalizeForComparison())
-                    }
-                }
-                // --- FIN DEL CAMBIO ---
-
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
-                ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.clickable { productoViewModel.openCategorySearchDialog() }) {
                     OutlinedTextField(
-                        value = uiState.categoryQuery,
-                        onValueChange = {
-                            productoViewModel.onCategoryQueryChanged(it)
-                            expanded = true // Mantenemos el menú abierto al escribir
-                        },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        label = { Text("Buscar Categoría") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        singleLine = true
+                        value = formState.categoria,
+                        onValueChange = {},
+                        label = { Text("Categoría") },
+                        trailingIcon = { Icon(Icons.Default.Search, contentDescription = "Buscar categoría") },
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = true,
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurface,
+                        )
                     )
-
-                    if (filteredCategories.isNotEmpty()) {
-                        ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false },
-                            modifier = Modifier.heightIn(max= 200.dp)
-                        ) {
-                            filteredCategories.forEach { category ->
-                                DropdownMenuItem(
-                                    text = { Text(category.nombre) },
-                                    onClick = {
-                                        productoViewModel.onCategorySelected(category.nombre)
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
-
+                Spacer(Modifier.height(8.dp))
                 FilledTonalButton(
                     onClick = { productoViewModel.requestAddNewCategory() },
-                    modifier = Modifier
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Añadir Categoría",
-                        modifier = Modifier.size(ButtonDefaults.IconSize)
-                    )
+                    Icon(Icons.Default.Add, "Añadir Categoría", Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text("Añadir Categoría")
+                    Text("Añadir Nueva Categoría")
                 }
             }
-            // --- FIN DEL BLOQUE DE CÓDIGO CORREGIDO ---
 
-
-            OutlinedTextField(
-                value = formState.precioCompra,
-                onValueChange = { productoViewModel.onFormChange(formState.copy(precioCompra = it)) },
-                label = { Text("Precio de Compra (S/)") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-            )
-
-            OutlinedTextField(
-                value = formState.precioVenta,
-                onValueChange = { productoViewModel.onFormChange(formState.copy(precioVenta = it)) },
-                label = { Text("Precio de Venta (S/)") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-            )
-
-            OutlinedTextField(
-                value = formState.stock,
-                onValueChange = { productoViewModel.onFormChange(formState.copy(stock = it)) },
-                label = { Text("Cantidad en Stock") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-
-            DatePickerField(
-                label = "Fecha de Vencimiento",
-                timestamp = formState.fechaVencimiento,
-                onDateSelected = { newTimestamp -> productoViewModel.onFormChange(formState.copy(fechaVencimiento = newTimestamp)) },
-                onClearDate = { productoViewModel.onFormChange(formState.copy(fechaVencimiento = null)) }
-            )
-
+            OutlinedTextField(value = formState.precioCompra, onValueChange = { productoViewModel.onFormChange(formState.copy(precioCompra = it)) }, label = { Text("Precio de Compra (S/)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            OutlinedTextField(value = formState.precioVenta, onValueChange = { productoViewModel.onFormChange(formState.copy(precioVenta = it)) }, label = { Text("Precio de Venta (S/)") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            OutlinedTextField(value = formState.stock, onValueChange = { productoViewModel.onFormChange(formState.copy(stock = it)) }, label = { Text("Cantidad en Stock") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            DatePickerField(label = "Fecha de Vencimiento", timestamp = formState.fechaVencimiento, onDateSelected = { newTimestamp -> productoViewModel.onFormChange(formState.copy(fechaVencimiento = newTimestamp)) }, onClearDate = { productoViewModel.onFormChange(formState.copy(fechaVencimiento = null)) })
             OutlinedTextField(
                 value = formState.codigoBarras,
                 onValueChange = { productoViewModel.onFormChange(formState.copy(codigoBarras = it)) },
                 label = { Text("Código de Barras") },
                 modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    IconButton(onClick = onScanClick) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código")
-                    }
-                }
+                trailingIcon = { IconButton(onClick = onScanClick) { Icon(Icons.Default.QrCodeScanner, "Escanear código") } }
             )
 
             Button(
                 onClick = {
-                    if (formState.nombre.isNotBlank() && uiState.selectedCategoryName.isNotBlank()) {
+                    if (formState.nombre.isNotBlank() && formState.categoria.isNotBlank()) {
                         scope.launch {
                             val fechaCompraOriginal = if (isEditing) productoViewModel.getProductById(productId).firstOrNull()?.fechaCompra else null
-                            val productoParaGuardar = Producto(
-                                id = if (isEditing) productId else 0,
-                                nombre = formState.nombre,
-                                categoria = uiState.selectedCategoryName,
-                                precioCompra = formState.precioCompra.toDoubleOrNull() ?: 0.0,
-                                precioVenta = formState.precioVenta.toDoubleOrNull() ?: 0.0,
-                                stock = formState.stock.toIntOrNull() ?: 0,
-                                fechaCompra = fechaCompraOriginal ?: System.currentTimeMillis(),
-                                fechaVencimiento = formState.fechaVencimiento,
-                                imagenUri = formState.imagenUri,
-                                codigoBarras = formState.codigoBarras.ifEmpty { null }
-                            )
-                            if (isEditing) {
-                                productoViewModel.actualizarProducto(productoParaGuardar)
-                            } else {
-                                productoViewModel.insertarProducto(productoParaGuardar)
-                            }
+                            val productoParaGuardar = Producto(id = if (isEditing) productId else 0, nombre = formState.nombre, categoria = formState.categoria, precioCompra = formState.precioCompra.toDoubleOrNull() ?: 0.0, precioVenta = formState.precioVenta.toDoubleOrNull() ?: 0.0, stock = formState.stock.toIntOrNull() ?: 0, fechaCompra = fechaCompraOriginal ?: System.currentTimeMillis(), fechaVencimiento = formState.fechaVencimiento, imagenUri = formState.imagenUri, codigoBarras = formState.codigoBarras.ifEmpty { null })
+                            if (isEditing) { productoViewModel.actualizarProducto(productoParaGuardar) } else { productoViewModel.insertarProducto(productoParaGuardar) }
                             onNavigateUp()
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (isEditing) "Guardar Cambios" else "Guardar Producto")
+            ) { Text(if (isEditing) "Guardar Cambios" else "Guardar Producto") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CategorySearchDialog(
+    allCategories: List<Categoria>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onCategorySelected: (Categoria) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val filteredCategories = if (query.isBlank()) {
+        allCategories
+    } else {
+        allCategories.filter { it.nombre.normalizeForComparison().contains(query.normalizeForComparison()) }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TopAppBar(
+                    title = { Text("Buscar Categoría") },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar") } }
+                )
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    label = { Text("Buscar...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    singleLine = true
+                )
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(filteredCategories, key = { it.id }) { category ->
+                        ListItem(
+                            headlineContent = { Text(category.nombre) },
+                            modifier = Modifier.clickable { onCategorySelected(category) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -283,43 +260,11 @@ fun AddEditProductScreen(
 @Composable
 fun ImagePicker(imageUri: String?, onImageSelected: (String) -> Unit) {
     val context = LocalContext.current
-    val imagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
+    val imagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
     var hasPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, imagePermission) == PackageManager.PERMISSION_GRANTED) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
-        uri?.let { onImageSelected(it.toString()) }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { isGranted ->
-        hasPermission = isGranted
-        if (isGranted) {
-            imagePickerLauncher.launch("image/*")
-        } else {
-            Toast.makeText(context, "Permiso denegado.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .size(150.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .clickable {
-                if (hasPermission) imagePickerLauncher.launch("image/*")
-                else permissionLauncher.launch(imagePermission)
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        if (imageUri != null) {
-            AsyncImage(model = Uri.parse(imageUri), contentDescription = "Imagen del producto", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else {
-            Icon(imageVector = Icons.Default.AddAPhoto, contentDescription = "Añadir foto", modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-        }
-    }
+    val imagePickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? -> uri?.let { onImageSelected(it.toString()) } }
+    val permissionLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { isGranted -> hasPermission = isGranted; if (isGranted) { imagePickerLauncher.launch("image/*") } else { Toast.makeText(context, "Permiso denegado.", Toast.LENGTH_SHORT).show() } }
+    Box(modifier = Modifier.size(150.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).clickable { if (hasPermission) imagePickerLauncher.launch("image/*") else permissionLauncher.launch(imagePermission) }, contentAlignment = Alignment.Center) { if (imageUri != null) { AsyncImage(model = Uri.parse(imageUri), contentDescription = "Imagen del producto", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) } else { Icon(Icons.Default.AddAPhoto, "Añadir foto", Modifier.size(48.dp), MaterialTheme.colorScheme.onSecondaryContainer) } }
 }
 
 @Composable
@@ -333,40 +278,7 @@ fun DatePickerField(
     val utcTimeZone = TimeZone.getTimeZone("UTC")
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).apply { timeZone = utcTimeZone }
     val formattedDate = timestamp?.let { dateFormat.format(Date(it)) } ?: "Sin fecha de vencimiento"
-
-    Box(
-        modifier = Modifier.clickable {
-            val initialCalendar = Calendar.getInstance(utcTimeZone)
-            timestamp?.let { initialCalendar.timeInMillis = it }
-
-            showDatePicker(
-                context = context,
-                initialTimestamp = timestamp,
-                onDateSelected = onDateSelected
-            )
-        }
-    ) {
-        OutlinedTextField(
-            value = formattedDate,
-            onValueChange = {},
-            label = { Text(label) },
-            trailingIcon = {
-                if (timestamp != null) {
-                    IconButton(onClick = onClearDate) { Icon(Icons.Default.Clear, "Limpiar fecha") }
-                } else {
-                    Icon(Icons.Default.DateRange, "Seleccionar fecha")
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = false,
-            colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                disabledBorderColor = MaterialTheme.colorScheme.outline,
-                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface,
-                disabledLabelColor = MaterialTheme.colorScheme.onSurface,
-            )
-        )
-    }
+    Box(modifier = Modifier.clickable { val initialCalendar = Calendar.getInstance(utcTimeZone); timestamp?.let { initialCalendar.timeInMillis = it }; showDatePicker(context = context, initialTimestamp = timestamp, onDateSelected = onDateSelected) }) { OutlinedTextField(value = formattedDate, onValueChange = {}, label = { Text(label) }, trailingIcon = { if (timestamp != null) { IconButton(onClick = onClearDate) { Icon(Icons.Default.Clear, "Limpiar fecha") } } else { Icon(Icons.Default.DateRange, "Seleccionar fecha") } }, modifier = Modifier.fillMaxWidth(), enabled = false, colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MaterialTheme.colorScheme.onSurface, disabledBorderColor = MaterialTheme.colorScheme.outline, disabledTrailingIconColor = MaterialTheme.colorScheme.onSurface, disabledLabelColor = MaterialTheme.colorScheme.onSurface)) }
 }
 
 @Composable
@@ -375,33 +287,5 @@ fun NewCategoryDialog(
     onDismiss: () -> Unit
 ) {
     var text by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Añadir Nueva Categoría") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("Nombre de la categoría") },
-                singleLine = true
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (text.isNotBlank()) {
-                        onConfirm(text)
-                    }
-                }
-            ) {
-                Text("Guardar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
-    )
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Añadir Nueva Categoría") }, text = { OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Nombre de la categoría") }, singleLine = true) }, confirmButton = { Button(onClick = { if (text.isNotBlank()) { onConfirm(text) } }) { Text("Guardar") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } })
 }

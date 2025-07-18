@@ -22,9 +22,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.myapplication.data.GananciaPorDia
-import com.example.myapplication.data.Producto
-import com.example.myapplication.data.VentasPorDia
+import com.example.myapplication.data.producto.Producto
+import com.example.myapplication.data.reportes.GananciaPorDia
+import com.example.myapplication.data.reportes.VentasPorDia
 import com.example.myapplication.util.toFriendlyDateString
 import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
